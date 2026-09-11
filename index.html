@@ -114,7 +114,8 @@
     import { 
       getAuth, 
       GoogleAuthProvider, 
-      signInWithPopup, 
+      signInWithRedirect, 
+      getRedirectResult, 
       signOut, 
       onAuthStateChanged 
     } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-auth.js";
@@ -155,12 +156,15 @@
     const feedbackInput = document.getElementById('feedback-input');
     const postsContainer = document.getElementById('posts-container');
 
-    // ログイン処理
+    // ログイン処理（リダイレクト方式）
     loginBtn.addEventListener('click', () => {
-      signInWithPopup(auth, provider).catch((error) => {
-        console.error("ログインエラー:", error);
-        alert("ログインに失敗しました。");
-      });
+      signInWithRedirect(auth, provider);
+    });
+
+    // リダイレクト完了時のエラーハンドリング
+    getRedirectResult(auth).catch((error) => {
+      console.error("リダイレクトログインエラー:", error);
+      alert("ログイン処理中にエラーが発生しました。");
     });
 
     // ログアウト処理
