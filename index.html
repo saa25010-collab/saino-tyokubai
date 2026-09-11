@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>直売所 ご意見・ご感想掲示板</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 600px;
+      margin: 20px auto;
+      padding: 0 15px;
+      background-color: #f9f9f9;
+    }
+    h1, h2 {
+      color: #2c3e50;
+    }
+    .card {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    .logout-btn {
+      background-color: #f44336;
+    }
+    .logout-btn:hover {
+      background-color: #da190b;
+    }
+    textarea {
+      width: 100%;
+      height: 80px;
+      margin-top: 10px;
+      margin-bottom: 10px;
+      padding: 8px;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .post {
+      border-bottom: 1px solid #eee;
+      padding: 10px 0;
+    }
+    .post:last-child {
+      border-bottom: none;
+    }
+    .post-header {
+      font-size: 0.85em;
+      color: #666;
+    }
+    .post-content {
+      margin-top: 5px;
+      white-space: pre-wrap;
+    }
+    .hidden {
+      display: none;
+    }
+    .user-info {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 15px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>直売所 お客様のお声</h1>
+
+  <!-- 未ログイン時の表示 -->
+  <div id="login-section" class="card">
+    <p>ご意見を投稿・閲覧するにはGoogleアカウントでログインしてください。</p>
+    <button id="login-btn">Googleでログイン</button>
+  </div>
+
+  <!-- ログイン後の表示 -->
+  <div id="app-section" class="card hidden">
+    <div class="user-info">
+      <span>ようこそ <strong id="user-name"></strong> さん</span>
+      <button id="logout-btn" class="logout-btn">ログアウト</button>
+    </div>
+
+    <h2>ご意見・ご感想を投稿する</h2>
+    <form id="feedback-form">
+      <textarea id="feedback-input" placeholder="直売所へのご意見やメッセージをご自由にお書きください" required></textarea>
+      <button type="submit">送信する</button>
+    </form>
+  </div>
+
+  <!-- 投稿一覧表示エリア -->
+  <div class="card">
+    <h2>みんなの投稿</h2>
+    <div id="posts-container">
+      <p>読み込み中...</p>
+    </div>
+  </div>
+
+  <!-- Firebase SDK の読み込み (v10 modular) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
+    import { 
+      getAuth, 
+      GoogleAuthProvider, 
+      signInWithPopup, 
+      signOut, 
+      onAuthStateChanged 
+    } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-auth.js";
+    import { 
+      getFirestore, 
+      collection, 
+      addDoc, 
+      query, 
+      orderBy, 
+      onSnapshot, 
+      serverTimestamp 
+    } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js";
+
+    // Firebase 設定情報
+    const firebaseConfig = {
+      apiKey: "AIzaSyAbGQjxRebdVRHmxE3NI1HwgWzDhMibMrk",
+      authDomain: "saino-tchokubai.firebaseapp.com",
+      projectId: "saino-tchokubai",
+      storageBucket: "saino-tchokubai.firebasestorage.app",
+      messagingSenderId: "322333872560",
+      appId: "1:322333872560:web:9f4142e3a8ff26b4848675",
+      measurementId: "G-62C9PDJVVR"
+    };
+
+    // Firebase 初期化
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    // DOM要素の取得
+    const loginSection = document.getElementById('login-section');
+    const appSection = document.getElementById('app-section');
+    const loginBtn = document.getElementById('login-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const userNameSpan = document.getElementById('user-name');
+    const feedbackForm = document.getElementById('feedback-form');
+    const feedbackInput = document.getElementById('feedback-input');
+    const postsContainer = document.getElementById('posts-container');
+
+    // ログイン処理
+    loginBtn.addEventListener('click', () => {
+      signInWithPopup(auth, provider).catch((error) => {
+        console.error("ログインエラー:", error);
+        alert("ログインに失敗しました。");
+      });
+    });
+
+    // ログアウト処理
+    logoutBtn.addEventListener('click', () => {
+      signOut(auth).catch((error) => {
+        console.error("ログアウトエラー:", error);
+      });
+    });
+
+    // 認証状態の監視
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        // ログイン状態
+        loginSection.classList.add('hidden');
+        appSection.classList.remove('hidden');
+        userNameSpan.textContent = user.displayName || 'ゲスト';
+        loadFeedbacks(); // 投稿取得を開始
+      } else {
+        // ログアウト状態
+        loginSection.classList.remove('hidden');
+        appSection.classList.add('hidden');
+        postsContainer.innerHTML = '<p>ログインすると投稿が表示されます。</p>';
+      }
+    });
+
+    // 意見の新規投稿
+    feedbackForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const content = feedbackInput.value.trim();
+      
+      if (!content) return;
+
+      try {
+        await addDoc(collection(db, "feedback"), {
+          uid: auth.currentUser.uid,
+          userName: auth.currentUser.displayName || "匿名",
+          text: content,
+          createdAt: serverTimestamp()
+        });
+        feedbackInput.value = ""; // 入力欄をクリア
+      } catch (error) {
+        console.error("投稿エラー:", error);
+        alert("投稿の送信に失敗しました。");
+      }
+    });
+
+    // 投稿一覧をリアルタイムで取得・表示
+    function loadFeedbacks() {
+      const q = query(collection(db, "feedback"), orderBy("createdAt", "desc"));
+      
+      onSnapshot(q, (snapshot) => {
+        postsContainer.innerHTML = "";
+        
+        if (snapshot.empty) {
+          postsContainer.innerHTML = "<p>まだ投稿はありません。</p>";
+          return;
+        }
+
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const postDiv = document.createElement("div");
+          postDiv.className = "post";
+
+          // 日時のフォーマット処理
+          const dateStr = data.createdAt ? new Date(data.createdAt.toDate()).toLocaleString('ja-JP') : "送信中...";
+
+          postDiv.innerHTML = `
+            <div class="post-header">
+              <strong>${escapeHtml(data.userName)}</strong> (${dateStr})
+            </div>
+            <div class="post-content">${escapeHtml(data.text)}</div>
+          `;
+          postsContainer.appendChild(postDiv);
+        });
+      }, (error) => {
+        console.error("データ取得エラー:", error);
+        postsContainer.innerHTML = "<p>投稿の読み込み権限がありません。</p>";
+      });
+    }
+
+    // HTMLエスケープ処理（XSS対策）
+    function escapeHtml(str) {
+      if (!str) return "";
+      return str.replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
